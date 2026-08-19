@@ -1666,7 +1666,11 @@ pub enum CtrlReq {
     /// `run-shell "helper --path '#{pane_current_path}'"` handed the helper that
     /// literal string.
     ExpandFormat(String, mpsc::Sender<String>),
-    MoveWindow(Option<usize>),
+    // (target display index, reply). The reply reports "can't find window: N"
+    // (target already exists / -t missing) when the move can't happen, so
+    // move-window can exit 1 / show a status message instead of silently
+    // no-opping when the destination index is already occupied.
+    MoveWindow(Option<usize>, mpsc::Sender<Result<(), String>>),
     // (source display index, target display index, reply); source None =
     // active window. #559: the reply reports "can't find window: N" when
     // either side does not resolve, so swap-window can exit 1 instead of

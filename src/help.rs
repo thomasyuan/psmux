@@ -34,6 +34,7 @@ pub const PREFIX_DEFAULTS: &[(&str, &str)] = &[
     ("w",       "choose-tree"),
     ("&",       "confirm-before -p 'kill-window #W? (y/n)' kill-window"),
     (",",       "rename-window"),
+    (".",       "command-prompt -p \"move window to:\" \"move-window -t '%%'\""),
     ("'",       "select-window-index"),
     ("0",       "select-window -t :0"),
     ("1",       "select-window -t :1"),

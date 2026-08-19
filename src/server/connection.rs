@@ -2613,15 +2613,28 @@ match cmd {
     }
     "move-window" | "movew" => {
         // Destination display index: the parsed -t window target (arrives via the
-        // TARGET line / `-t :N`), else a bare positional (`move-window N`). The
+        // TARGET line / `-t :N`), else the raw -t value (a bare `-t 0` parses as
+        // a SESSION target, leaving target_win None — same class of bug fixed for
+        // swap-window in #559), else a bare positional (`move-window N`). The
         // -t value was stripped from `args`, so scan positionals for the fallback
         // (skipping the `-s` source value). Server handler honors gapped indices.
-        let target = target_win.or_else(|| {
-            args.iter().enumerate()
-                .filter(|(i, a)| !a.starts_with('-') && (*i == 0 || args[*i - 1] != "-s"))
-                .find_map(|(_, a)| a.trim_start_matches(':').parse::<usize>().ok())
-        });
-        let _ = tx.send(CtrlReq::MoveWindow(target));
+        let target = target_win
+            .or_else(|| raw_target.as_deref().and_then(|t| {
+                t.rsplit(':').next().unwrap_or(t).parse::<usize>().ok()
+            }))
+            .or_else(|| {
+                args.iter().enumerate()
+                    .filter(|(i, a)| !a.starts_with('-') && (*i == 0 || args[*i - 1] != "-s"))
+                    .find_map(|(_, a)| a.trim_start_matches(':').parse::<usize>().ok())
+            });
+        let (resp_s, resp_r) = mpsc::channel();
+        let _ = tx.send(CtrlReq::MoveWindow(target, resp_s));
+        if let Ok(Err(e)) = resp_r.recv_timeout(Duration::from_secs(5)) {
+            if !persistent {
+                let _ = writeln!(write_stream, "ERROR: {}", e);
+                let _ = write_stream.flush();
+            }
+        }
     }
     "swap-window" | "swapw" => {
         // Source: `-s <win>`. Accept bare index, ':'-prefixed, and the
