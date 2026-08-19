@@ -4259,19 +4259,41 @@ pub fn run_server(session_name: String, socket_name: Option<String>, initial_com
                     state_dirty = true;
                     meta_dirty = true;
                 }
-                CtrlReq::MoveWindow(target) => {
-                    if let Some(t) = target {
+                CtrlReq::MoveWindow(target, resp) => {
+                    let result = if let Some(t) = target {
                         if app.window_indices_valid() {
                             // t is a display index; give it to the active window.
-                            app.move_active_window_to_index(t);
+                            // move_active_window_to_index returns false when `t`
+                            // is already held by a different window (tmux:
+                            // "target window already exists" without -k).
+                            if app.move_active_window_to_index(t) {
+                                Ok(())
+                            } else {
+                                Err(format!("target window already exists: {}", t))
+                            }
                         } else if t < app.windows.len() && app.active_idx != t {
                             // legacy Vec-position move (mock AppState)
                             let win = app.windows.remove(app.active_idx);
                             let insert_idx = if t > app.active_idx { t - 1 } else { t };
                             app.windows.insert(insert_idx.min(app.windows.len()), win);
                             app.active_idx = insert_idx.min(app.windows.len() - 1);
+                            Ok(())
+                        } else {
+                            Ok(())
                         }
+                    } else {
+                        Err("no target window specified".to_string())
+                    };
+                    if let Err(ref msg) = result {
+                        // Persistent (TUI) clients have no reply stream for
+                        // this path; surface the error in the status bar
+                        // like swap-window does.
+                        app.status_message = Some((format!("move-window: {}", msg), Instant::now(), None));
+                    } else {
+                        meta_dirty = true;
+                        state_dirty = true;
                     }
+                    let _ = resp.send(result);
                 }
                 CtrlReq::SwapWindow(src, target, resp) => {
                     // Both are display indices; map to Vec positions honoring gaps.
